@@ -24,7 +24,7 @@ def schedule_notification(scheduler, booking_date, chat_id, route, seats):
     if booking_date.tzinfo is None:
         booking_date = booking_date.replace(tzinfo=kyiv_tz)
 
-    notify_time = booking_date - timedelta(hours=11,minutes=40)
+    notify_time = booking_date - timedelta(hours=20)
 
     now = datetime.now(kyiv_tz)
 
