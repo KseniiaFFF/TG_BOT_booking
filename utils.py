@@ -26,6 +26,22 @@ def format_route(route_value):
     return route_map.get(route_value, route_value)
 
 
+def parce_seats(seats):
+
+    if not seats:
+        return []
+    
+    if isinstance(seats,list):
+        return seats
+    
+    if isinstance(seats,str):
+        seats = seats.strip("{}")
+        if not seats:
+            return []
+        return [int(x) for x in seats.split(",")]
+    
+    return []
+
 
 
 

@@ -41,3 +41,35 @@ def build_seats_keyboard(route_id, date, selected=None):
     return markup
 
 
+def build_admin_seats_keyboard(route, date, selected_seats=None):
+    if selected_seats is None:
+        selected_seats = []
+
+    busy = get_busy_seats(route, date)
+
+    markup = InlineKeyboardMarkup(row_width=4)
+
+    for seat in range(1, 9):  
+        text = str(seat)
+
+        if seat in busy and seat not in selected_seats:
+            text = f"❌{seat}"
+
+        elif seat in selected_seats:
+            text = f"✅{seat}"
+
+        markup.add(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"adm_seat_{seat}"
+            )
+        )
+
+    markup.add(
+        InlineKeyboardButton("💾 Зберегти зміни", callback_data="adm_save"),
+        InlineKeyboardButton("🔙 Назад", callback_data="adm_back")
+    )
+
+    return markup
+
+

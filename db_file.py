@@ -40,6 +40,87 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
+
+
+def init_db_block():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS blocked_users (
+            chat_id BIGINT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT NOW()
+        )     
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def block_user(chat_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO blocked_users (chat_id)
+        VALUES (%s)
+        ON CONFLICT (chat_id) DO NOTHING
+    """, (chat_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def unblock_user(chat_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM blocked_users
+        WHERE chat_id = %s
+    """, (chat_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def is_user_blocked(chat_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 1
+        FROM blocked_users
+        WHERE chat_id = %s
+    """, (chat_id,))
+
+    result = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    return result is not None
+
+
+def get_blocked_users(limit=20):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT chat_id, created_at
+        FROM blocked_users
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (limit,))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
     
 
 def get_busy_seats(route: str, date: str):
@@ -60,10 +141,13 @@ def get_busy_seats(route: str, date: str):
 
     busy = set()
 
-    for seats, chat_id in rows:
+    for seats, _ in rows:
 
         if not seats:
             continue
+
+        if isinstance(seats, str):
+            seats = seats.replace(" ", " ").split(",")
 
         for s in seats:
             try:
@@ -132,7 +216,7 @@ def is_book_active(chat_id):
         return False
     
 
-def delete_booking(chat_id):
+def delete_booking(chat_id, force=False):
     conn = get_connection()
     cur = conn.cursor()
 
@@ -151,20 +235,21 @@ def delete_booking(chat_id):
 
     chat_id, username, name, phone, route, booking_date, seats = row
 
-    
-    now = datetime.now(timezone.utc)
+    if not force:
 
-    if booking_date:
-        if booking_date.tzinfo is None:
-            booking_date = booking_date.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
 
-        diff = booking_date - now
+        if booking_date:
+            if booking_date.tzinfo is None:
+                booking_date = booking_date.replace(tzinfo=timezone.utc)
 
-        if diff < timedelta(days=2):
-            cur.close()
-            conn.close()
+            diff = booking_date - now
 
-            return False, "too_late"
+            if diff < timedelta(days=2):
+                cur.close()
+                conn.close()
+
+                return False, "too_late"
 
     
     cur.execute("""
@@ -242,3 +327,85 @@ def get_all_future_bookings():
         })
 
     return bookings
+
+
+def search_users(query:str):
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT chat_id, username, name, phone, route , booking_date, seat_number
+        FROM bus_bot
+        WHERE
+            CAST(chat_id AS TEXT) ILIKE %s OR
+            username ILIKE %s OR
+            name ILIKE %s OR
+            phone ILIKE %s
+        ORDER BY booking_date DESC
+        LIMIT 10
+    """, (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"))
+    
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+    
+
+def get_full_booking(chat_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT chat_id, username, name, phone, route, booking_date, seat_number
+        FROM bus_bot
+        WHERE chat_id = %s
+    """, (chat_id,))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return None
+    
+    return{
+        "chat_id": row[0],
+        "username": row[1],
+        "name": row[2],
+        "phone": row[3],
+        "route": row[4],
+        "booking_date": row[5],
+        "seat_number": row[6] or [],
+    }
+
+
+def update_booking(chat_id, **kwargs):
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    fields = []
+    values = []
+
+    for key, value in kwargs.items():
+        fields.append(f"{key} = %s")
+        values.append(value)
+    values.append(chat_id)
+
+    query = f"""
+        UPDATE bus_bot
+        SET {", ".join(fields)}
+        WHERE chat_id = %s
+    """
+
+    cur.execute(query, values)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return True
