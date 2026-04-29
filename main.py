@@ -2,7 +2,7 @@ import threading
 
 from assign_bot import bot
 from log import logger
-from user_menu import show_booking_admin, admin_menu_3, adm_keyboard, book_a_place, contact_us, main_menu, user_state, send_dates, ask_phone, waiting_answer, cancel_keyboard, get_state, admin_menu, admin_menu_2, show_blocked_users
+from user_menu import show_booking_admin, adm_keyboard, book_a_place, contact_us, main_menu, user_state, send_dates, ask_phone, waiting_answer, cancel_keyboard, get_state, admin_menu, admin_menu_2, show_blocked_users
 from db_file import update_booking, get_connection, init_db, add_or_update_user, delete_booking, search_users, init_db_block, block_user
 from phone_module import is_valid_ua_phone, normalize_phone
 from notifications import sync
@@ -74,6 +74,22 @@ def handle_contact(message):
     user_state[chat_id]["step"] = "waiting_pib"
 
     bot.send_message(chat_id, "✍️ Введіть ПІБ", reply_markup=cancel_keyboard())
+
+
+@bot.message_handler(func=lambda m: m.text == "🙌Створити бронювання")
+def admin_create_booking(message):
+
+    chat_id = message.chat.id
+
+    import time
+    fake_id = int(time.time())
+
+    user_state[chat_id] = {
+        "step":"admin_enter_name",
+        "target":fake_id
+    }
+
+    book_a_place(message)
 
 
 @bot.message_handler(content_types=['text'])
@@ -186,7 +202,8 @@ def router(message):
             state = user_state[chat_id]
 
             add_or_update_user(
-                chat_id,
+                # chat_id,
+                state["target"],
                 username=user_name,
                 name=state['pib'],
                 phone=state['phone'],
@@ -196,7 +213,11 @@ def router(message):
             )
 
         bot.send_message(chat_id, "✅ Бронювання збережено!")
-        main_menu(message)
+
+        if chat_id == ADMIN_CHAT_ID:
+            admin_menu(message)
+        else:
+            main_menu(message)
         sync()
         return
     
@@ -221,6 +242,22 @@ def router(message):
         if text == "🚫 Чорний список":
             show_blocked_users(message)
             return
+        
+        if text == "➕ Додати в ЧС":
+            user_state[chat_id]["step"] = "block_user_manual"
+            bot.send_message(chat_id, "Введіть chat_id користувача:", reply_markup=adm_keyboard())
+            return
+        
+    if step == "block_user_manual":
+        try:
+            target_id = int(text)
+        except:
+            bot.send_message(chat_id, "❌ Невірний ID")
+            return
+        block_user(target_id)
+        bot.send_message(chat_id, "✅ Користувача заблоковано")
+        user_state[chat_id]["step"] = "admin_menu"
+        return
 
     if step == "admin_search":
             
@@ -263,35 +300,11 @@ def router(message):
             bot.send_message(chat_id, "Додано успішно👌", reply_markup=admin_menu(message))
             user_state[chat_id]["step"]="admin_menu"
             return
-        elif text == "✏️Змінити бронювання":
-            user_state[chat_id]["step"]="client_edit"
-            admin_menu_3(message)
-            return
-        
-    if step == "client_edit":
-        if text == "✏️Змінити дані бронювання":
+        elif text == "✏️Змінити дані бронювання":
             selected_user_id = user_state.get(chat_id, {}).get("selected_user_id")
-            # bot.send_message(chat_id, "Що потрібно змінити?", reply_markup=booking_inline_keyboard(chat_id))
+            bot.send_message(chat_id, "Що треба змінити?", reply_markup=adm_keyboard())
             show_booking_admin(message, selected_user_id)
             return
-        elif text == "❌Скасувати бронювання":
-            selected_user_id = user_state.get(chat_id, {}).get("selected_user_id")
-            if not selected_user_id:
-                bot.send_message(chat_id, "❌ Користувача не знайдено")
-                return
-            
-            success, status = delete_booking(selected_user_id, force=True)
-            if status == "deleted":
-                user_state[chat_id]["step"]="admin_menu"
-                admin_menu(message)
-                sync()
-                return
-            elif status == "not_found":
-                bot.send_message(chat_id, "❌ Бронювання не знайдено")
-                return
-            else:
-                bot.send_message(chat_id, "Щось пішло не так")
-                return
 
     if step == "edit_date_inline":
         target = user_state[chat_id]["target"]
@@ -308,13 +321,39 @@ def router(message):
             return
         except:
             bot.send_message(chat_id, "❌ Невірний формат")
+
+    if step == "edit_name":
+        target = state.get("target")
+
+        if not target:
+            bot.send_message(chat_id, "❌ Помилка")
+            return
         
+        update_booking(target, name = text)
+        bot.send_message(chat_id, "✅ Ім'я оновлено")
+        sync()
+        show_booking_admin(message,target)
+        user_state[chat_id]["step"] = "admin_menu"
+        return
+    
+    if step == "edit_phone":
+        target = state.get("target")
+
+        if not target:
+            bot.send_message(chat_id, "❌ Помилка")
+            return
+        
+        update_booking(target, phone = text)
+        bot.send_message(chat_id, "✅ Номер оновлено")
+        sync()
+        show_booking_admin(message,target)
+        user_state[chat_id]["step"] = "admin_menu"
+        return
     
     bot.send_message(
         chat_id,
         "Використовуйте кнопки меню 👇"
     ) 
-    
     
 
 bot.polling()

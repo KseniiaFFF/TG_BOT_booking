@@ -2,7 +2,7 @@ from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from assign_bot import bot
 from dates_file import build_date_keyboard
-from db_file import is_book_active, is_user_blocked, get_blocked_users, unblock_user, get_full_booking, update_booking
+from db_file import is_book_active, is_user_blocked, get_blocked_users, unblock_user, get_full_booking, update_booking, delete_booking
 from seats_create import build_seats_keyboard, build_admin_seats_keyboard
 from log import logger
 from utils import format_route, parce_seats
@@ -51,7 +51,8 @@ def admin_menu(message):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("🔍 Знайти клієнта", "🚫 Чорний список", "🙌Створити бронювання")
+    keyboard.add("🔍 Знайти клієнта", "🚫 Чорний список", "➕ Додати в ЧС")
+    keyboard.add("🙌Створити бронювання")
     
     bot.send_message(chat_id,"Admin menu", reply_markup=keyboard)
 
@@ -64,20 +65,7 @@ def admin_menu_2(message):
     
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
-    keyboard.add("🚫 У чорний список", "✏️Змінити бронювання")
-    keyboard.add(types.KeyboardButton("Адмін меню"))
-    
-    bot.send_message(chat_id, "Оберіть дію", reply_markup=keyboard)
-
-
-
-def admin_menu_3(message):
-
-    chat_id = message.chat.id
-    
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    
-    keyboard.add("❌Скасувати бронювання", "✏️Змінити дані бронювання")
+    keyboard.add("🚫 У чорний список", "✏️Змінити дані бронювання")
     keyboard.add(types.KeyboardButton("Адмін меню"))
     
     bot.send_message(chat_id, "Оберіть дію", reply_markup=keyboard)
@@ -155,7 +143,8 @@ def booking_inline_keyboard(target_user_id):
 
     murkup.add(
         InlineKeyboardButton("👤Ім'я",callback_data=f"edit|name_admin|{target_user_id}"),
-        InlineKeyboardButton("📞Номер",callback_data=f"edit|phone_admin|{target_user_id}")
+        InlineKeyboardButton("📞Номер",callback_data=f"edit|phone_admin|{target_user_id}"),
+        InlineKeyboardButton("❌Скасувати бронювання",callback_data=f"edit|delete|{target_user_id}")
     )
 
     murkup.add(
@@ -176,6 +165,26 @@ def edit_booking_handler(call):
         return
     
     target_user_id = int(data[2])
+
+    if action == "delete":
+        success, status = delete_booking(target_user_id, force=True)
+
+        if status == "deleted":
+                bot.edit_message_text(
+                    "✅ Бронювання видалено",
+                    call.message.chat.id,
+                    call.message.message_id
+                )
+                user_state[call.message.chat.id]["step"]="admin_menu"
+                admin_menu(call.message)
+                sync()
+                return
+        elif status == "not_found":
+            bot.edit_message_text(call.message.chat.id, "❌ Бронювання не знайдено")
+            return
+        else:
+            bot.edit_message_text(call.message.chat.id, "Щось пішло не так")
+            return
 
     if action == "date_admin":
         user_state[call.message.chat.id] = {
@@ -227,6 +236,23 @@ def edit_booking_handler(call):
             )
         )
         return
+    
+    if action == "name_admin":
+        user_state[call.message.chat.id] = {
+            "step":"edit_name",
+            "target":target_user_id
+        }
+        bot.send_message(call.message.chat.id, "Введіть нове ім'я:")
+        return
+    
+    if action == "phone_admin":
+        user_state[call.message.chat.id] = {
+            "step":"edit_phone",
+            "target":target_user_id
+        }
+        bot.send_message(call.message.chat.id, "Введіть новий номер:")
+        return
+
     
 
 @bot.callback_query_handler(func=lambda call: call.data == "adm_back")
