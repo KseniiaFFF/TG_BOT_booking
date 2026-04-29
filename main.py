@@ -3,7 +3,7 @@ import threading
 from assign_bot import bot
 from log import logger
 from user_menu import show_booking_admin, adm_keyboard, book_a_place, contact_us, main_menu, user_state, send_dates, ask_phone, waiting_answer, cancel_keyboard, get_state, admin_menu, admin_menu_2, show_blocked_users
-from db_file import update_booking, get_connection, init_db, add_or_update_user, delete_booking, search_users, init_db_block, block_user
+from db_file import update_booking, get_connection, init_db, add_or_update_user, delete_booking, search_users, init_db_block, block_user, init_archive_db
 from phone_module import is_valid_ua_phone, normalize_phone
 from notifications import sync
 from scheduler import start_scheduler, restore_jobs
@@ -21,6 +21,7 @@ if __name__ == "__main__":
         print("❌ Ошибка:", e)
 
 init_db()
+init_archive_db()
 init_db_block()
 
 
@@ -54,26 +55,8 @@ BUTTON_HANDLERS = {
     '✍️Змінити дані бронювання' : book_a_place,
     'ℹ️Контакти та допомога': contact_us,
     'Головне меню' : main_menu,
-    '❌Скасування' : main_menu,
     'Адмін меню' : admin_menu
 }    
-
-
-@bot.message_handler(content_types=['contact'])
-def handle_contact(message):
-    chat_id = message.chat.id
-    state = get_state(chat_id)
-    step = state.get("step")
-
-    if step != "waiting_phone":
-        return
-
-    phone = message.contact.phone_number
-
-    user_state[chat_id]["phone"] = phone
-    user_state[chat_id]["step"] = "waiting_pib"
-
-    bot.send_message(chat_id, "✍️ Введіть ПІБ", reply_markup=cancel_keyboard())
 
 
 @bot.message_handler(func=lambda m: m.text == "🙌Створити бронювання")
@@ -157,6 +140,12 @@ def router(message):
     
 
     if step == "waiting_pib":
+        if text == '❌Скасування':
+            if chat_id == ADMIN_CHAT_ID:
+                admin_menu(message)
+            else:
+                main_menu(message)
+            return
 
         pib = text.strip()
 
@@ -195,7 +184,10 @@ def router(message):
         seat_number = [int(s) for s in state['seats']]
 
         if text == "❌ Ні":
-            main_menu(message)
+            if chat_id == ADMIN_CHAT_ID:
+                admin_menu(message)
+            else:
+                main_menu(message)
             return
 
         if text == "✅ Так":
