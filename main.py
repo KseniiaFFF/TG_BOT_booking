@@ -29,6 +29,11 @@ def get_user_data(message):
     return message.chat.id, message.chat.username
 
 
+def get_target_id(chat_id):
+    state = user_state.get(chat_id, {})
+    return state.get("target", chat_id)
+
+
 @bot.message_handler(commands=["start"])
 def start(message):
 
@@ -73,6 +78,25 @@ def admin_create_booking(message):
     }
 
     book_a_place(message)
+
+
+@bot.message_handler(content_types=['contact'])
+def handle_contact(message):
+    chat_id = message.chat.id
+    state = get_state(chat_id)
+    step = state.get("step")
+
+    if step != "waiting_phone":
+        return
+
+    phone = message.contact.phone_number
+
+    # user_state[chat_id]["phone"] = phone
+    # user_state[chat_id]["step"] = "waiting_pib"
+    state["phone"] = phone
+    state["step"] = "waiting_pib"
+
+    bot.send_message(chat_id, "✍️ Введіть ПІБ", reply_markup=cancel_keyboard())
 
 
 @bot.message_handler(content_types=['text'])
@@ -193,9 +217,11 @@ def router(message):
         if text == "✅ Так":
             state = user_state[chat_id]
 
+            target_id = get_target_id(chat_id)
+
             add_or_update_user(
                 # chat_id,
-                state["target"],
+                target_id,
                 username=user_name,
                 name=state['pib'],
                 phone=state['phone'],
