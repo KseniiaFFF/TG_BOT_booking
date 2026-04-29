@@ -7,7 +7,7 @@ from utils import format_route
 
 kyiv_tz = ZoneInfo("Europe/Kyiv")
 
-ADMIN_CHAT_ID = 5948335788
+ADMIN_CHAT_ID = 594833578
 
 
 def notify_admin(text:str):
