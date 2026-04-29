@@ -42,6 +42,29 @@ def init_db():
     conn.close()
 
 
+def init_archive_db():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS archive_clients (
+            id SERIAL PRIMARY KEY,
+            chat_id BIGINT,
+            username TEXT,
+            name TEXT,
+            phone TEXT,
+            route TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            booking_date TIMESTAMP WITH TIME ZONE,
+            seat_number INTEGER[]
+        )
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def init_db_block():
     conn = get_connection()
     cur = conn.cursor()
@@ -280,6 +303,17 @@ def delete_booking(chat_id, force=False):
 def cleanup_old_bookings():
     conn = get_connection()
     cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO archive_clients(
+                chat_id, username, name, phone, route, created_at, booking_date, seat_number
+        )
+        SELECT
+            chat_id, username, name, phone, route, created_at, booking_date, seat_number
+        FROM bus_bot
+        WHERE booking_date::date < CURRENT_DATE
+        ON CONFLICT(chat_id) DO NOTHING
+    """)
 
     cur.execute("""
         DELETE FROM bus_bot
